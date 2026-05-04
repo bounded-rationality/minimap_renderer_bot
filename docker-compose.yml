@@ -1,0 +1,44 @@
+version: "3.9"
+
+# For LOCAL TESTING ONLY
+# Do not use this in production - use Azure Container Apps instead
+# Secrets must be in a .env file (never committed to git)
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Local Redis has no password for simplicity in dev
+    # Azure uses managed Redis with TLS and password
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  bot:
+    build: .
+    restart: unless-stopped
+    environment:
+      MODE: bot
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_TLS: "false"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    restart: unless-stopped
+    environment:
+      MODE: worker
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_TLS: "false"
+    depends_on:
+      redis:
+        condition: service_healthy

@@ -1,0 +1,90 @@
+# Azure Container Apps deployment configuration
+# Deploy with:
+#   az containerapp update --name mmr-bot --resource-group <rg> --yaml azure-container-apps.yml
+#
+# Prerequisites:
+#   - Azure Container Registry (ACR) with your image pushed
+#   - Azure Cache for Redis (Basic tier is sufficient)
+#   - All secrets stored in Azure Container Apps secrets, NOT here
+
+# BOT container app
+apiVersion: 2023-05-01
+kind: ContainerApp
+metadata:
+  name: mmr-bot
+properties:
+  configuration:
+    secrets:
+      - name: discord-token
+        keyVaultUrl: https://<your-keyvault>.vault.azure.net/secrets/DISCORD-TOKEN
+        identity: system
+      - name: redis-password
+        keyVaultUrl: https://<your-keyvault>.vault.azure.net/secrets/REDIS-PASSWORD
+        identity: system
+    registries:
+      - server: <your-acr>.azurecr.io
+        identity: system
+    ingress:
+      external: false  # Bot needs no inbound traffic, only outbound to Discord
+  template:
+    containers:
+      - name: mmr-bot
+        image: <your-acr>.azurecr.io/mmr-bot:latest
+        env:
+          - name: MODE
+            value: bot
+          - name: DISCORD_TOKEN
+            secretRef: discord-token
+          - name: REDIS_HOST
+            value: <your-redis>.redis.cache.windows.net
+          - name: REDIS_PORT
+            value: "6380"
+          - name: REDIS_PASSWORD
+            secretRef: redis-password
+          - name: REDIS_TLS
+            value: "true"
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+    scale:
+      minReplicas: 1
+      maxReplicas: 1  # Only one bot instance needed
+
+---
+# WORKER container app
+apiVersion: 2023-05-01
+kind: ContainerApp
+metadata:
+  name: mmr-worker
+properties:
+  configuration:
+    secrets:
+      - name: redis-password
+        keyVaultUrl: https://<your-keyvault>.vault.azure.net/secrets/REDIS-PASSWORD
+        identity: system
+    registries:
+      - server: <your-acr>.azurecr.io
+        identity: system
+    ingress:
+      external: false
+  template:
+    containers:
+      - name: mmr-worker
+        image: <your-acr>.azurecr.io/mmr-bot:latest
+        env:
+          - name: MODE
+            value: worker
+          - name: REDIS_HOST
+            value: <your-redis>.redis.cache.windows.net
+          - name: REDIS_PORT
+            value: "6380"
+          - name: REDIS_PASSWORD
+            secretRef: redis-password
+          - name: REDIS_TLS
+            value: "true"
+        resources:
+          cpu: 1.0
+          memory: 2Gi  # Worker needs more RAM for rendering
+    scale:
+      minReplicas: 1
+      maxReplicas: 3  # Scale up workers under load

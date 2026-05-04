@@ -1,0 +1,16 @@
+# Discord
+discord.py>=2.3.0
+
+# Redis - redis.asyncio replaces abandoned aioredis
+redis>=5.0.0
+
+# Job queue
+rq>=1.16.0
+
+# Renderer - installed from your fork
+# Install with: pip install git+https://github.com/bounded-rationality/minimap_renderer.git
+langdetect>=1.0.9
+hanzidentifier>=1.2.0
+
+# Environment
+python-dotenv>=1.0.0
