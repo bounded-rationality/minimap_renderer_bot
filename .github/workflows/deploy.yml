@@ -30,11 +30,13 @@ jobs:
           az containerapp update \
             --name mmr-bot \
             --resource-group rg-mmr \
-            --image ${{ secrets.ACR_LOGIN_SERVER }}/mmr-bot:latest
+            --image ${{ secrets.ACR_LOGIN_SERVER }}/mmr-bot:latest \
+            --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Deploy worker container app
         run: |
           az containerapp update \
             --name mmr-worker \
             --resource-group rg-mmr \
-            --image ${{ secrets.ACR_LOGIN_SERVER }}/mmr-bot:latest
+            --image ${{ secrets.ACR_LOGIN_SERVER }}/mmr-bot:latest \
+            --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID }}
