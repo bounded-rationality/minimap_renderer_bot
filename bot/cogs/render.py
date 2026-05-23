@@ -180,14 +180,13 @@ class CogRender(commands.Cog):
                                     )
                                 )
                             else:
-                                await msg.edit(
-                                    embed=make_embed(filename, GREEN, status="Completed!")
-                                )
                                 output_filename = filename.replace(".wowsreplay", ".mp4")
                                 with BytesIO(result) as video_data:
                                     await interaction.followup.send(
                                         file=discord.File(video_data, filename=output_filename)
                                     )
+                                await msg.delete()
+                                await interaction.delete_original_response()
                         else:
                             await msg.edit(
                                 embed=make_embed(filename, RED, error="Unknown result type.")

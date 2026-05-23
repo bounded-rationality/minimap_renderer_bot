@@ -189,6 +189,8 @@ class CogDualRender(commands.Cog):
                                     await interaction.followup.send(
                                         file=discord.File(video_data, filename=output_filename)
                                     )
+                                await msg.delete()
+                                await interaction.delete_original_response()
                         else:
                             await msg.edit(
                                 embed=make_embed(filenames, RED, error="Unknown result type.")
