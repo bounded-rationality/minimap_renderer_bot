@@ -5,6 +5,7 @@ from discord.ext import commands
 from utils.environ import check_environment_var
 from utils.logging import LOGGER_BOT
 from bot.cogs.render import CogRender
+from bot.cogs.dual_render import CogDualRender
 
 check_environment_var(["DISCORD_TOKEN"])
 
@@ -23,6 +24,7 @@ async def on_ready():
 
 async def setup():
     await BOT.add_cog(CogRender(BOT))
+    await BOT.add_cog(CogDualRender(BOT))
 
 
 def run():

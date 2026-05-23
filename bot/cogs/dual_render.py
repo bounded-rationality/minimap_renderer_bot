@@ -8,7 +8,7 @@ from utils.logging import LOGGER_BOT
 from rq import Queue
 from rq.job import Job
 from rq.worker import Worker
-from tasks.single import render_single
+from tasks.dual import render_dual
 from discord.ext import commands
 from discord import app_commands
 
@@ -21,7 +21,7 @@ GREEN = 0x00FF00
 
 MAX_QUEUE_SIZE = 10
 COOLDOWN_SECONDS = 60
-JOB_TIMEOUT_PER_ITEM = 300  # seconds per queued item
+JOB_TIMEOUT_PER_ITEM = 300
 
 
 def make_embed(
@@ -31,8 +31,8 @@ def make_embed(
     error: str | None = None,
     progress: float | None = None,
 ) -> discord.Embed:
-    embed = discord.Embed(title="Minimap Renderer", color=color)
-    embed.add_field(name="File", value=filename, inline=False)
+    embed = discord.Embed(title="Minimap Renderer - Dual", color=color)
+    embed.add_field(name="Files", value=filename, inline=False)
 
     if status:
         embed.add_field(name="Status", value=status, inline=False)
@@ -44,18 +44,17 @@ def make_embed(
         blocks = round(10 * progress)
         embed.add_field(
             name="Progress",
-            value=f"{'▮' * blocks}{'▯' * (10 - blocks)}",
+            value=f"{'?' * blocks}{'?' * (10 - blocks)}",
             inline=False,
         )
     return embed
 
 
-class CogRender(commands.Cog):
+class CogDualRender(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self._bot = bot
 
     async def _check(self, interaction: discord.Interaction) -> bool:
-        """Pre-flight checks before accepting a render job."""
         user = interaction.user
         worker_count = Worker.count(queue=QUEUE)
         cooldown = await ASYNC_REDIS.ttl(f"cooldown_{user.id}")
@@ -63,26 +62,26 @@ class CogRender(commands.Cog):
 
         if QUEUE.count >= MAX_QUEUE_SIZE:
             await interaction.followup.send(
-                "⚠️ The queue is full. Please try again shortly.", ephemeral=True
+                "?? The queue is full. Please try again shortly.", ephemeral=True
             )
             return False
 
         if worker_count == 0:
             await interaction.followup.send(
-                "⚠️ No render workers are available right now.", ephemeral=True
+                "?? No render workers are available right now.", ephemeral=True
             )
             return False
 
         if cooldown > 0:
             await interaction.followup.send(
-                f"⏳ You're on cooldown. Please wait {cooldown}s before submitting again.",
+                f"? You're on cooldown. Please wait {cooldown}s before submitting again.",
                 ephemeral=True,
             )
             return False
 
         if ongoing:
             await interaction.followup.send(
-                "⚠️ You already have a render in progress.", ephemeral=True
+                "?? You already have a render in progress.", ephemeral=True
             )
             return False
 
@@ -91,33 +90,35 @@ class CogRender(commands.Cog):
     async def _poll_result(
         self,
         interaction: discord.Interaction,
-        attachment: discord.Attachment,
+        attachment1: discord.Attachment,
+        attachment2: discord.Attachment,
         fps: int,
         quality: int,
-        logs: bool,
-        chat: bool,
         anon: bool,
+        green_tag: str | None,
+        red_tag: str | None,
     ):
         user = interaction.user
-        filename = attachment.filename
+        filenames = f"{attachment1.filename} + {attachment2.filename}"
 
-        # Mark user as having an ongoing task (expires after 3 min regardless)
         await ASYNC_REDIS.set(f"task_request_{user.id}", "", ex=180)
 
         try:
-            replay_bytes = await attachment.read()
+            replay_bytes_1 = await attachment1.read()
+            replay_bytes_2 = await attachment2.read()
             job_ttl = max(QUEUE.count, 1) * JOB_TIMEOUT_PER_ITEM
 
             job: Job = QUEUE.enqueue(
-                render_single,
+                render_dual,
                 kwargs={
                     "user_id": user.id,
-                    "replay_bytes": replay_bytes,
+                    "replay_bytes_1": replay_bytes_1,
+                    "replay_bytes_2": replay_bytes_2,
                     "fps": fps,
                     "quality": quality,
-                    "logs": logs,
-                    "chat": chat,
                     "anon": anon,
+                    "green_tag": green_tag,
+                    "red_tag": red_tag,
                 },
                 failure_ttl=180,
                 result_ttl=180,
@@ -125,7 +126,7 @@ class CogRender(commands.Cog):
             )
 
             msg = await interaction.followup.send(
-                embed=make_embed(filename, ORANGE, status="Queued"), wait=True
+                embed=make_embed(filenames, ORANGE, status="Queued"), wait=True
             )
 
             while True:
@@ -135,21 +136,21 @@ class CogRender(commands.Cog):
                     case "queued":
                         position = QUEUE.get_job_position(job.id)
                         status_text = f"Queued (position {position + 1})" if position is not None else "Queued"
-                        await msg.edit(embed=make_embed(filename, ORANGE, status=status_text))
+                        await msg.edit(embed=make_embed(filenames, ORANGE, status=status_text))
 
                     case "started":
                         meta = job.get_meta(refresh=True)
                         if progress := meta.get("progress"):
                             await msg.edit(
-                                embed=make_embed(filename, YELLOW, status="Rendering", progress=progress)
+                                embed=make_embed(filenames, YELLOW, status="Rendering", progress=progress)
                             )
                         elif task_status := meta.get("status"):
                             await msg.edit(
-                                embed=make_embed(filename, YELLOW, status=task_status)
+                                embed=make_embed(filenames, YELLOW, status=task_status)
                             )
                         else:
                             await msg.edit(
-                                embed=make_embed(filename, YELLOW, status="Started")
+                                embed=make_embed(filenames, YELLOW, status="Started")
                             )
 
                     case "finished":
@@ -157,16 +158,16 @@ class CogRender(commands.Cog):
 
                         if isinstance(result, ReplayParsingError):
                             await msg.edit(
-                                embed=make_embed(filename, RED, error="Replay parsing failed. Is this a valid replay file?")
+                                embed=make_embed(filenames, RED, error="Replay parsing failed. Are both files valid replays?")
                             )
                         elif isinstance(result, ReplayRenderingError):
                             await msg.edit(
-                                embed=make_embed(filename, RED, error="Render failed. The replay may be from an unsupported version.")
+                                embed=make_embed(filenames, RED, error="Render failed. Replays may be from an unsupported version or different battles.")
                             )
                         elif isinstance(result, Exception):
-                            LOGGER_BOT.exception(f"Unknown error in job result: {result}")
+                            LOGGER_BOT.exception(f"Unknown error in dual job result: {result}")
                             await msg.edit(
-                                embed=make_embed(filename, RED, error="An unexpected error occurred.")
+                                embed=make_embed(filenames, RED, error="An unexpected error occurred.")
                             )
                         elif isinstance(result, bytes):
                             file_size_mb = len(result) / (1024 * 1024)
@@ -174,67 +175,69 @@ class CogRender(commands.Cog):
                             if file_size_mb > 25:
                                 await msg.edit(
                                     embed=make_embed(
-                                        filename,
+                                        filenames,
                                         RED,
                                         error=f"Rendered file is too large ({file_size_mb:.1f} MB). Try reducing quality or fps.",
                                     )
                                 )
                             else:
                                 await msg.edit(
-                                    embed=make_embed(filename, GREEN, status="Completed!")
+                                    embed=make_embed(filenames, GREEN, status="Completed!")
                                 )
-                                output_filename = filename.replace(".wowsreplay", ".mp4")
+                                output_filename = attachment1.filename.replace(".wowsreplay", "_dual.mp4")
                                 with BytesIO(result) as video_data:
                                     await interaction.followup.send(
                                         file=discord.File(video_data, filename=output_filename)
                                     )
                         else:
                             await msg.edit(
-                                embed=make_embed(filename, RED, error="Unknown result type.")
+                                embed=make_embed(filenames, RED, error="Unknown result type.")
                             )
                         break
 
                     case "failed":
                         await msg.edit(
-                            embed=make_embed(filename, RED, error="Job failed unexpectedly.")
+                            embed=make_embed(filenames, RED, error="Job failed unexpectedly.")
                         )
                         break
 
                     case _:
                         await msg.edit(
-                            embed=make_embed(filename, RED, error="Render task expired.")
+                            embed=make_embed(filenames, RED, error="Render task expired.")
                         )
                         break
 
                 await asyncio.sleep(1)
 
         except Exception as e:
-            LOGGER_BOT.exception(f"Unhandled error in _poll_result: {e}")
+            LOGGER_BOT.exception(f"Unhandled error in dual _poll_result: {e}")
         finally:
             await ASYNC_REDIS.delete(f"task_request_{user.id}")
 
-    @app_commands.command(name="minimap", description="Renders a WoWS replay into a minimap video.")
+    @app_commands.command(name="minimap_dual", description="Renders two WoWS replays from the same battle side by side.")
     @app_commands.describe(
-        attachment="Your .wowsreplay file",
+        replay1="First replay file (green team)",
+        replay2="Second replay file (red team)",
         fps="Frames per second (20-30, default 30)",
         quality="Video quality 1-9 (default 7, higher = larger file)",
-        logs="Show event log overlay (default: True)",
-        chat="Show chat in log overlay (default: True)",
         anon="Hide player names (default: False)",
+        green_tag="Label for green team (optional)",
+        red_tag="Label for red team (optional)",
     )
-    async def render(
+    async def minimap_dual(
         self,
         interaction: discord.Interaction,
-        attachment: discord.Attachment,
+        replay1: discord.Attachment,
+        replay2: discord.Attachment,
         fps: app_commands.Range[int, 20, 30] = 30,
         quality: app_commands.Range[int, 1, 9] = 7,
-        logs: bool = True,
-        chat: bool = True,
         anon: bool = False,
+        green_tag: str | None = None,
+        red_tag: str | None = None,
     ):
-        if not attachment.filename.endswith(".wowsreplay"):
+        if not replay1.filename.endswith(".wowsreplay") or not replay2.filename.endswith(".wowsreplay"):
             await interaction.response.send_message(
-                "❌ Please attach a `.wowsreplay` file.", ephemeral=True
+                "? Both attachments must be .wowsreplay files.", ephemeral=True
             )
             return
 
@@ -246,11 +249,12 @@ class CogRender(commands.Cog):
         asyncio.create_task(
             self._poll_result(
                 interaction=interaction,
-                attachment=attachment,
+                attachment1=replay1,
+                attachment2=replay2,
                 fps=fps,
                 quality=quality,
-                logs=logs,
-                chat=chat,
                 anon=anon,
+                green_tag=green_tag,
+                red_tag=red_tag,
             )
         )
