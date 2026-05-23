@@ -93,10 +93,7 @@ def main():
             '                    try:\n'
             '                        index = abilities["id_to_index"][aid]\n'
             '                    except KeyError:\n'
-            '                        try:\n'
-            '                            index = self._abilities["clan"][aid]\n'
-            '                        except KeyError:\n'
-            '                            continue'
+            '                        index = self._abilities["clan"][aid]\n'
         ),
         new=(
             '                for aid, _ in ac.items():\n'
@@ -105,10 +102,7 @@ def main():
             '                    try:\n'
             '                        index = abilities["id_to_index"][aid]\n'
             '                    except KeyError:\n'
-            '                        try:\n'
-            '                            index = self._abilities["clan"][aid]\n'
-            '                        except KeyError:\n'
-            '                            continue'
+            '                        index = self._abilities["clan"][aid]\n'
         ),
         description="Skip consumable rendering for unknown ships"
     )
