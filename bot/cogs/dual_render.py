@@ -44,7 +44,7 @@ def make_embed(
         blocks = round(10 * progress)
         embed.add_field(
             name="Progress",
-            value=f"{'?' * blocks}{'?' * (10 - blocks)}",
+            value=f"{'▮' * blocks}{'▯' * (10 - blocks)}",
             inline=False,
         )
     return embed
