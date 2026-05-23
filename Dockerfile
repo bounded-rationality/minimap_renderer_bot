@@ -8,6 +8,7 @@ WORKDIR /app
 
 # Install system dependencies for image processing and ffmpeg
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
     ffmpeg \
     libgl1 \
     libglib2.0-0 \
