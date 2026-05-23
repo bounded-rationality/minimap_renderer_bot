@@ -98,7 +98,7 @@ def main():
         new=(
             '                for aid, _ in ac.items():\n'
             '                    abilities = self._abilities.get(params_id)\n'
-            '                    if abilities is None: continue\n'
+            '                    if abilities is None or aid is None: continue\n'
             '                    try:\n'
             '                        index = abilities["id_to_index"][aid]\n'
             '                    except KeyError:\n'
