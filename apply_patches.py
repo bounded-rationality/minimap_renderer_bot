@@ -221,6 +221,18 @@ def main():
         print("  ALREADY APPLIED: Watermark removal")
     print()
 
+    # -------------------------------------------------------------------------
+    # Patch 8: renderer/layers/health.py - fix regen tuple unpacking for 15.4
+    # -------------------------------------------------------------------------
+    print("Patching renderer/layers/health.py (regen tuple)...")
+    patch_file(
+        health_py,
+        old='                _, count, _, _ = regen',
+        new='                regen_vals = regen if isinstance(regen, (list, tuple)) else (regen,)\n                count = regen_vals[1] if len(regen_vals) > 1 else regen_vals[0]',
+        description="Fix regen tuple unpacking for 15.4 (2 values instead of 4)"
+    )
+    print()
+
     print("All patches applied successfully!")
     print()
     print("Next step: run update_version.py to set up game data for your current WoWs version.")
