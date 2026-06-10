@@ -83,8 +83,20 @@ properties:
           - name: REDIS_TLS
             value: "true"
         resources:
-          cpu: 1.0
-          memory: 2Gi  # Worker needs more RAM for rendering
+          cpu: 0.25
+          memory: 0.5Gi
     scale:
-      minReplicas: 1
-      maxReplicas: 3  # Scale up workers under load
+      minReplicas: 0
+      maxReplicas: 3
+      rules:
+        - name: redis-queue-scaler
+          custom:
+            type: redis
+            metadata:
+              address: <your-redis>.redis.cache.windows.net:6380
+              listName: rq:queue:single
+              listLength: "1"
+              enableTLS: "true"
+            auth:
+              - secretRef: redis-password
+                triggerParameter: password

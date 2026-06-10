@@ -21,7 +21,13 @@ GREEN = 0x00FF00
 
 MAX_QUEUE_SIZE = 10
 COOLDOWN_SECONDS = 60
-JOB_TIMEOUT_PER_ITEM = 300  # seconds per queued item
+JOB_TIMEOUT_PER_ITEM = 300
+MAX_FILE_SIZE_MB = 5
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+
+# .wowsreplay files start with a 4-byte little-endian integer (packet size)
+# followed by 0x00 padding. We just check it's not empty or all zeros.
+WOWSREPLAY_MIN_SIZE = 16
 
 
 def make_embed(
@@ -48,6 +54,26 @@ def make_embed(
             inline=False,
         )
     return embed
+
+
+def validate_replay(filename: str, size: int, data: bytes) -> str | None:
+    """
+    Validate a replay file before queuing.
+    Returns an error message string if invalid, or None if valid.
+    """
+    if not filename.lower().endswith(".wowsreplay"):
+        return "File must be a `.wowsreplay` file."
+
+    if size > MAX_FILE_SIZE_BYTES:
+        return f"File is too large ({size / 1024 / 1024:.1f} MB). Maximum size is {MAX_FILE_SIZE_MB} MB."
+
+    if len(data) < WOWSREPLAY_MIN_SIZE:
+        return "File is too small to be a valid replay."
+
+    if all(b == 0 for b in data[:WOWSREPLAY_MIN_SIZE]):
+        return "File appears to be empty or corrupt."
+
+    return None
 
 
 class CogRender(commands.Cog):
@@ -101,11 +127,17 @@ class CogRender(commands.Cog):
         user = interaction.user
         filename = attachment.filename
 
-        # Mark user as having an ongoing task (expires after 3 min regardless)
         await ASYNC_REDIS.set(f"task_request_{user.id}", "", ex=180)
 
         try:
             replay_bytes = await attachment.read()
+
+            # Validate file content after download
+            error = validate_replay(filename, attachment.size, replay_bytes)
+            if error:
+                await interaction.followup.send(f"❌ {error}", ephemeral=True)
+                return
+
             job_ttl = max(QUEUE.count, 1) * JOB_TIMEOUT_PER_ITEM
 
             job: Job = QUEUE.enqueue(
@@ -231,9 +263,16 @@ class CogRender(commands.Cog):
         chat: bool = True,
         anon: bool = False,
     ):
-        if not attachment.filename.endswith(".wowsreplay"):
+        if not attachment.filename.lower().endswith(".wowsreplay"):
             await interaction.response.send_message(
                 "❌ Please attach a `.wowsreplay` file.", ephemeral=True
+            )
+            return
+
+        if attachment.size > MAX_FILE_SIZE_BYTES:
+            await interaction.response.send_message(
+                f"❌ File is too large ({attachment.size / 1024 / 1024:.1f} MB). Maximum size is {MAX_FILE_SIZE_MB} MB.",
+                ephemeral=True,
             )
             return
 

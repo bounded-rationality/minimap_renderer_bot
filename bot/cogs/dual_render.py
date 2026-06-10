@@ -22,6 +22,10 @@ GREEN = 0x00FF00
 MAX_QUEUE_SIZE = 10
 COOLDOWN_SECONDS = 60
 JOB_TIMEOUT_PER_ITEM = 300
+MAX_FILE_SIZE_MB = 5
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+
+WOWSREPLAY_MIN_SIZE = 16
 
 
 def make_embed(
@@ -50,6 +54,26 @@ def make_embed(
     return embed
 
 
+def validate_replay(filename: str, size: int, data: bytes) -> str | None:
+    """
+    Validate a replay file before queuing.
+    Returns an error message string if invalid, or None if valid.
+    """
+    if not filename.lower().endswith(".wowsreplay"):
+        return "File must be a `.wowsreplay` file."
+
+    if size > MAX_FILE_SIZE_BYTES:
+        return f"File is too large ({size / 1024 / 1024:.1f} MB). Maximum size is {MAX_FILE_SIZE_MB} MB."
+
+    if len(data) < WOWSREPLAY_MIN_SIZE:
+        return "File is too small to be a valid replay."
+
+    if all(b == 0 for b in data[:WOWSREPLAY_MIN_SIZE]):
+        return "File appears to be empty or corrupt."
+
+    return None
+
+
 class CogDualRender(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self._bot = bot
@@ -62,26 +86,26 @@ class CogDualRender(commands.Cog):
 
         if QUEUE.count >= MAX_QUEUE_SIZE:
             await interaction.followup.send(
-                "?? The queue is full. Please try again shortly.", ephemeral=True
+                "⚠️ The queue is full. Please try again shortly.", ephemeral=True
             )
             return False
 
         if worker_count == 0:
             await interaction.followup.send(
-                "?? No render workers are available right now.", ephemeral=True
+                "⚠️ No render workers are available right now.", ephemeral=True
             )
             return False
 
         if cooldown > 0:
             await interaction.followup.send(
-                f"? You're on cooldown. Please wait {cooldown}s before submitting again.",
+                f"⏳ You're on cooldown. Please wait {cooldown}s before submitting again.",
                 ephemeral=True,
             )
             return False
 
         if ongoing:
             await interaction.followup.send(
-                "?? You already have a render in progress.", ephemeral=True
+                "⚠️ You already have a render in progress.", ephemeral=True
             )
             return False
 
@@ -106,6 +130,18 @@ class CogDualRender(commands.Cog):
         try:
             replay_bytes_1 = await attachment1.read()
             replay_bytes_2 = await attachment2.read()
+
+            # Validate both files after download
+            error1 = validate_replay(attachment1.filename, attachment1.size, replay_bytes_1)
+            if error1:
+                await interaction.followup.send(f"❌ Replay 1: {error1}", ephemeral=True)
+                return
+
+            error2 = validate_replay(attachment2.filename, attachment2.size, replay_bytes_2)
+            if error2:
+                await interaction.followup.send(f"❌ Replay 2: {error2}", ephemeral=True)
+                return
+
             job_ttl = max(QUEUE.count, 1) * JOB_TIMEOUT_PER_ITEM
 
             job: Job = QUEUE.enqueue(
@@ -237,9 +273,29 @@ class CogDualRender(commands.Cog):
         green_tag: str | None = None,
         red_tag: str | None = None,
     ):
-        if not replay1.filename.endswith(".wowsreplay") or not replay2.filename.endswith(".wowsreplay"):
+        if not replay1.filename.lower().endswith(".wowsreplay"):
             await interaction.response.send_message(
-                "? Both attachments must be .wowsreplay files.", ephemeral=True
+                "❌ Replay 1 must be a `.wowsreplay` file.", ephemeral=True
+            )
+            return
+
+        if not replay2.filename.lower().endswith(".wowsreplay"):
+            await interaction.response.send_message(
+                "❌ Replay 2 must be a `.wowsreplay` file.", ephemeral=True
+            )
+            return
+
+        if replay1.size > MAX_FILE_SIZE_BYTES:
+            await interaction.response.send_message(
+                f"❌ Replay 1 is too large ({replay1.size / 1024 / 1024:.1f} MB). Maximum size is {MAX_FILE_SIZE_MB} MB.",
+                ephemeral=True,
+            )
+            return
+
+        if replay2.size > MAX_FILE_SIZE_BYTES:
+            await interaction.response.send_message(
+                f"❌ Replay 2 is too large ({replay2.size / 1024 / 1024:.1f} MB). Maximum size is {MAX_FILE_SIZE_MB} MB.",
+                ephemeral=True,
             )
             return
 

@@ -1,0 +1,18 @@
+{
+  "name": "redis-queue-scaler",
+  "custom": {
+    "type": "redis",
+    "metadata": {
+      "address": "redis-mmr.redis.cache.windows.net:6380",
+      "listName": "rq:queue:single",
+      "listLength": "1",
+      "enableTLS": "true"
+    },
+    "auth": [
+      {
+        "secretRef": "redis-password",
+        "triggerParameter": "password"
+      }
+    ]
+  }
+}
