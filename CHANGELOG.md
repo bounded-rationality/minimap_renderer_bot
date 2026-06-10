@@ -1,5 +1,23 @@
 # Changelog
 
+## [Community Fork] — 2026-06-10
+
+### Changed
+
+- **Worker scaling** (`azure-container-apps.yml`): Worker min replicas reduced from 1 to 0. Worker now scales to zero when idle and spins up automatically via KEDA Redis scaler when jobs arrive in the queue. Eliminates idle compute cost.
+- **Worker resources** (`azure-container-apps.yml`): Worker CPU reduced from 1.0 to 0.25 vCPU, memory reduced from 2Gi to 0.5Gi. Sufficient for rendering workloads based on observed utilisation.
+
+### Added
+
+- **File validation** (`bot/cogs/render.py`, `bot/cogs/dual_render.py`): Replay files are now validated before being queued:
+  - Maximum file size: 5 MB (based on observed real-world replay sizes)
+  - Extension check (case-insensitive)
+  - Minimum size check to reject empty files
+  - Header check to reject zero-byte or corrupt files
+  - Size is checked before download where possible for fast rejection
+
+---
+
 ## [Community Fork] — 2026-05-21
 
 ### Fixed

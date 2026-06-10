@@ -36,6 +36,34 @@ This document describes every modification made to the original upstream bot cod
 
 **Change:** The cooldown message now includes the remaining seconds from the Redis TTL.
 
+### Patch 6: File validation before queuing
+
+**Why:** Without validation, any file could be uploaded and passed to the renderer, including files that are too large, not actually replay files, or deliberately malformed. The renderer treats input as trusted which creates unnecessary risk.
+
+**Change:** Added `validate_replay()` function and `MAX_FILE_SIZE_MB = 5` constant. Validation checks:
+- File extension (case-insensitive, must be `.wowsreplay`)
+- File size (maximum 5 MB, checked against attachment metadata before download where possible)
+- Minimum file size (rejects empty files)
+- Header bytes (rejects zero-byte or corrupt files)
+
+Validation runs at two points: against attachment metadata before downloading (fast rejection), and against file content after downloading (catches renamed or corrupt files).
+
+---
+
+## bot/cogs/dual_render.py
+
+### Patch 1: New file (not in upstream)
+
+**Why:** The upstream bot only supported single replay rendering. Dual render support was added to this fork to allow side-by-side comparison of both teams' perspectives from the same battle.
+
+**Change:** New cog implementing `/minimap_dual` command, mirroring the structure of `render.py` but accepting two replay files and passing them to `tasks/dual.py`.
+
+### Patch 2: File validation before queuing
+
+**Why:** Same as render.py Patch 6. Both replay files are validated independently with clear per-file error messages.
+
+**Change:** Same `validate_replay()` function and constants as render.py. Validation applied to both attachments before either is queued.
+
 ---
 
 ## utils/connection.py
@@ -95,6 +123,22 @@ This document describes every modification made to the original upstream bot cod
 - `apply_patches.py` runs at build time — renderer is patched into the image, not at runtime
 - No secrets in the image — all credentials injected at runtime via environment variables
 - Single image for both bot and worker — `MODE` environment variable selects which process to run
+
+---
+
+## azure-container-apps.yml
+
+### Patch 1: Worker scale-to-zero
+
+**Why:** The worker was configured with `minReplicas: 1`, meaning it ran continuously even when no render jobs were queued. At 1.0 vCPU / 2Gi RAM this was the largest idle cost in the system despite near-zero CPU utilisation.
+
+**Change:** `minReplicas` set to 0. KEDA Redis scaler added watching `rq:queue:single` — worker spins up when jobs arrive and scales back to zero after the cooldown period (300 seconds). Max replicas reduced from 5 to 3.
+
+### Patch 2: Worker resource reduction
+
+**Why:** Observed CPU utilisation never exceeded 0.5% of the 1.0 vCPU allocation at idle. Even during renders the workload does not justify 1.0 vCPU / 2Gi.
+
+**Change:** Worker resources reduced to `cpu: 0.25, memory: 0.5Gi`. Monitor render performance and increase if needed.
 
 ---
 
