@@ -5,7 +5,7 @@
 ### Changed
 
 - **Worker scaling** (`azure-container-apps.yml`): Worker min replicas reduced from 1 to 0. Worker now scales to zero when idle and spins up automatically via KEDA Redis scaler when jobs arrive in the queue. Eliminates idle compute cost.
-- **Worker resources** (`azure-container-apps.yml`): Worker CPU reduced from 1.0 to 0.25 vCPU, memory reduced from 2Gi to 0.5Gi. Sufficient for rendering workloads based on observed utilisation.
+- **Worker resources** (`azure-container-apps.yml`): Worker CPU reduced from 1.0 to 0.5 vCPU, memory reduced from 2Gi to 1.0Gi. Initial reduction to 0.25 vCPU / 0.5Gi caused ffmpeg broken pipe errors during rendering due to insufficient memory for the 1360x850 RGBA frame buffer.
 
 ### Added
 
